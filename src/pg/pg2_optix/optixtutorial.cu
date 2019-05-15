@@ -69,7 +69,7 @@ RT_PROGRAM void primary_ray( void )
 	optix::Ray ray(view_from, d_w, 0, 0.01f);
 
 	PerRayData_radiance prd;
-	rtTrace( top_object, ray, prd );
+	curand_init(launch_index.x + launch_dim.x * launch_index.y, 0, 0, &prd.state);	rtTrace( top_object, ray, prd );
 
 	// access to buffers within OptiX programs uses a simple array syntax	
 	output_buffer[launch_index] = optix::make_uchar4( prd.result.x*255.0f, prd.result.y*255.0f, prd.result.z*255.0f, 255 );
@@ -77,22 +77,22 @@ RT_PROGRAM void primary_ray( void )
 
 RT_PROGRAM void closest_hit_Phong( void )
 {
-	float amb_occ = ambient_occlusion() / (1 / (2 * M_PIf));
+	optix::float3 amb_occ = ambient_occlusion(ray_data.state);
 	float ligth = optix::dot(optix::normalize(attribs.vectorToLight), attribs.normal);
 
 	optix::float3 lr = 2 * (ligth)* attribs.normal - optix::normalize(attribs.vectorToLight);
 	float shade = shadow_ray(attribs.vectorToLight);
-
-	optix::float3 res = ambient + amb_occ * (getDiffuseColor() * ligth) + specular * pow(optix::dot(-ray.direction, lr), shininess);
+	
+	optix::float3 res = ambient + (getDiffuseColor() * ligth) + specular * pow(optix::clamp(optix::dot(-ray.direction, lr), 0.0f, 1.0f), shininess);
 	//rtPrintf("Ambient %f \n", amb_occ.x, amb_occ.x);
 
-	ray_data.result = res;
+	ray_data.result = res * amb_occ;
 
 }
 
 RT_PROGRAM void closest_hit_Normal(void)
 {
-	float amb = ambient_occlusion() / (1 / (2 * M_PIf));
+	optix::float3 amb = ambient_occlusion(ray_data.state);
 	ray_data.result = attribs.normal * amb * 0.5f;
 
 }
@@ -105,7 +105,7 @@ RT_PROGRAM void closest_hit_Lambert(void)
 	optix::float3 lr = 2 * (ligth)* attribs.normal - optix::normalize(attribs.vectorToLight);
 	optix::float3 res = optix::fmaxf(0, ligth) * diff;
 	float shade = shadow_ray(attribs.vectorToLight);
-	float amb = ambient_occlusion() / (1 / (2 * M_PIf));
+	optix::float3 amb = ambient_occlusion(ray_data.state);
 	ray_data.result = res *amb;
 
 }
@@ -121,20 +121,25 @@ RT_PROGRAM void shader_hit(void)
 	rtTerminateRay();
 }
 
-__device__ float ambient_occlusion(void)
+__device__ optix::float3 ambient_occlusion(curandState_t state)
 {
-	float bef = 1 / M_PIf;
-	float sum = 0.0f;
-	for (int i = 0; i < 16; i++)
+	optix::float3 sum = optix::make_float3(0, 0, 0);
+	int N = 32;
+	for (int i = 0; i < N; i++)
 	{
-		optix::float3 visible_ray_dir = SampleHemisphere(attribs.normal);
-		float shade = shadow_ray(visible_ray_dir);
-		sum += shade * (optix::dot(attribs.normal, visible_ray_dir));
-	}
-	
-	sum = bef * sum;
+		float randomX = (float)curand_uniform(&state);
+		float randomY = (float)curand_uniform(&state);
 
-	return sum;
+		optix::float3 omegai = SampleHemisphere(attribs.normal, randomX,randomY);
+		float pdf = 1.0f/ (2* CUDART_PI_F);
+
+		float shade = shadow_ray(omegai);
+
+		optix::float3 whiteColor = optix::make_float3(1, 1, 1);
+		
+		sum += whiteColor * (shade * (optix::dot(attribs.normal, omegai) / pdf));
+	}
+	return sum/N;
 }
 
 /* may access variables declared with the rtPayload semantic in the same way as closest-hit and any-hit programs */
@@ -184,23 +189,17 @@ __device__ float L2Norm(optix::float3 q)
 	
 }
 
-__device__ optix::float3 SampleHemisphere(optix::float3 normal)
+__device__ optix::float3 SampleHemisphere(optix::float3 normal, float randomX, float randomY)
 {
-	curandState_t state;
-	curand_init(launch_index.x + launch_dim.x * launch_index.y, 1234, 0, &state);
-
-	float randomX = (float)curand_uniform(&state);
-	float randomY = (float)curand_uniform(&state);
-
-	float x = 2 * cosf(2 * M_PIf * randomX) * sqrtf(randomY * (1 - randomY));
-	float y = 2 * sinf(2 * M_PIf * randomX) * sqrtf(randomY * (1 - randomY));
+	float x = 2 * cosf(2 * CUDART_PI_F * randomX) * sqrtf(randomY * (1 - randomY));
+	float y = 2 * sinf(2 * CUDART_PI_F * randomX) * sqrtf(randomY * (1 - randomY));
 	float z = 1 - 2 * randomY;
-
-	optix::float3 omega = optix::make_float3(x, y, z);
-	optix::normalize(omega);
-	if (optix::dot(omega, normal) < 0)
-	{
-		omega *= -1;
+	optix::float3 omegaI = optix::make_float3( x, y, z );
+	optix::normalize(omegaI);
+	if (optix::dot(omegaI, normal) < 0) {
+		omegaI *= -1;
 	}
-	return omega;
+
+	return omegaI;
 }
+

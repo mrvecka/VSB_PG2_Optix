@@ -250,7 +250,7 @@ void Raytracer::LoadScene( const std::string file_name )
 			break;
 		
 		}
-
+		error_handler(rtProgramCreateFromPTXFile(context, "optixtutorial.ptx", "closest_hit_Phong", &closest_hit));
 		error_handler(createAndSetMaterialColorVariable(rtMaterial, "diffuse", material->diffuse()));
 		error_handler(createAndSetMaterialColorVariable(rtMaterial, "specular", material->specular()));
 		error_handler(createAndSetMaterialColorVariable(rtMaterial, "ambient", material->ambient()));

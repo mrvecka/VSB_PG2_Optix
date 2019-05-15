@@ -120,6 +120,8 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>D3d11.lib;d3dcompiler.lib;FreeImaged.lib;optix.6.0.0.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <StackReserveSize>4194304</StackReserveSize>
+      <StackCommitSize>4194304</StackCommitSize>
     </Link>
     <CudaCompile>
       <NvccCompilation>ptx</NvccCompilation>
