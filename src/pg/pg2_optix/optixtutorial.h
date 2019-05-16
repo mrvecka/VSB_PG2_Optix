@@ -21,6 +21,5 @@ struct PerRayData_shadow
 {
 	optix::float3 attenuation;
 	float visible;
-	curandState_t state;
 
 };

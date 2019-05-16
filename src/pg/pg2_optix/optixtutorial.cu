@@ -69,7 +69,8 @@ RT_PROGRAM void primary_ray( void )
 	optix::Ray ray(view_from, d_w, 0, 0.01f);
 
 	PerRayData_radiance prd;
-	curand_init(launch_index.x + launch_dim.x * launch_index.y, 0, 0, &prd.state);	rtTrace( top_object, ray, prd );
+	curand_init(launch_index.x + launch_dim.x * launch_index.y, 0, 0, &prd.state);
+	rtTrace( top_object, ray, prd );
 
 	// access to buffers within OptiX programs uses a simple array syntax	
 	output_buffer[launch_index] = optix::make_uchar4( prd.result.x*255.0f, prd.result.y*255.0f, prd.result.z*255.0f, 255 );
@@ -83,8 +84,7 @@ RT_PROGRAM void closest_hit_Phong( void )
 	optix::float3 lr = 2 * (ligth)* attribs.normal - optix::normalize(attribs.vectorToLight);
 	float shade = shadow_ray(attribs.vectorToLight);
 	
-	optix::float3 res = ambient + (getDiffuseColor() * ligth) + specular * pow(optix::clamp(optix::dot(-ray.direction, lr), 0.0f, 1.0f), shininess);
-	//rtPrintf("Ambient %f \n", amb_occ.x, amb_occ.x);
+	optix::float3 res = ambient + (getDiffuseColor() * ligth) + specular * pow(optix::dot(-ray.direction, lr), shininess);
 
 	ray_data.result = res * amb_occ;
 
@@ -137,7 +137,7 @@ __device__ optix::float3 ambient_occlusion(curandState_t state)
 
 		optix::float3 whiteColor = optix::make_float3(1, 1, 1);
 		
-		sum += whiteColor * (shade * (optix::dot(attribs.normal, omegai) / pdf));
+		sum += diffuse * shade * (optix::dot(attribs.normal, omegai) / pdf);
 	}
 	return sum/N;
 }
